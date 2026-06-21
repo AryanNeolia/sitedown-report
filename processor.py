@@ -88,6 +88,7 @@ C_HEADER_DARK = "1F3864"
 C_HEADER_2G   = "FF6600"
 C_HEADER_4G   = "0070C0"
 C_HEADER_5G   = "70AD47"
+C_HEADER_COMBO = "7030A0"   # purple – combined 2G+4G column header
 C_REGION_ROW  = "FFC000"
 C_GRAND_ROW   = "FF0000"
 C_ALT_ROW     = "EBF3FB"
@@ -96,9 +97,10 @@ WHITE         = "FFFFFF"
 BLACK         = "000000"
 
 TECH_COLORS: dict[str, str] = {
-    "2G": C_HEADER_2G,
-    "4G": C_HEADER_4G,
-    "5G": C_HEADER_5G,
+    "2G":    C_HEADER_2G,
+    "4G":    C_HEADER_4G,
+    "5G":    C_HEADER_5G,
+    "2G+4G": C_HEADER_COMBO,
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -202,7 +204,10 @@ def _build_pivot(df: pd.DataFrame,
         return pd.DataFrame(), []
 
     bucket_labels = list(BUCKETS.keys())
-    techs_found   = [t for t in TECH_SHEETS if t in df["_TECH"].unique()]
+    # Recognise the synthetic "2G+4G" tech alongside the normal ones,
+    # while preserving a sensible left-to-right column order.
+    all_known_techs = TECH_SHEETS + ["2G+4G"]
+    techs_found     = [t for t in all_known_techs if t in df["_TECH"].unique()]
 
     if use_unique_nss:
         grouped = (df.groupby(["_REGION", "_ZONE", "_BUCKET", "_TECH"])["NSS_ID"]
@@ -250,7 +255,58 @@ def _prepare_report_data(all_df: pd.DataFrame,
         return pd.DataFrame(), []
 
     use_nss = (type_filter == ["SITE"])
+
+    # ── Site sheet only: merge NSS_IDs common to 2G & 4G into "2G+4G" ────────
+    if use_nss:
+        df = _merge_common_2g_4g(df)
+
     return _build_pivot(df, use_unique_nss=use_nss)
+
+def _merge_common_2g_4g(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    For the Site sheet: find NSS_IDs that appear in BOTH 2G and 4G,
+    and re-tag those rows as a combined "2G+4G" technology.
+
+    Rules:
+      - Only NSS_IDs present in both '2G' and '4G' are affected.
+      - The combined row uses the WORSE (higher) ageing bucket between
+        the two technologies for that NSS_ID.
+      - Those NSS_IDs are removed from the standalone '2G' and '4G'
+        groups so they are not double-counted there.
+      - 5G rows, and any 2G/4G rows whose NSS_ID is NOT shared, are
+        left completely untouched.
+    """
+    bucket_order = list(BUCKETS.keys())   # ordered worst→best is reverse of this
+    bucket_rank  = {b: i for i, b in enumerate(bucket_order)}  # higher = worse
+
+    is_2g = df["_TECH"] == "2G"
+    is_4g = df["_TECH"] == "4G"
+
+    ids_2g = set(df.loc[is_2g, "NSS_ID"].dropna())
+    ids_4g = set(df.loc[is_4g, "NSS_ID"].dropna())
+    common_ids = ids_2g & ids_4g
+
+    if not common_ids:
+        return df   # nothing to merge — return unchanged
+
+    # Split into "common" (needs merging) and "rest" (untouched)
+    is_common_2g4g = df["NSS_ID"].isin(common_ids) & (is_2g | is_4g)
+    df_common      = df[is_common_2g4g]
+    df_rest        = df[~is_common_2g4g]
+
+    # For each common NSS_ID, pick the worst bucket seen across its 2G/4G rows,
+    # but keep one representative row per NSS_ID (zone/region come from it).
+    merged_rows = []
+    for nss_id, group in df_common.groupby("NSS_ID"):
+        worst_row = group.loc[
+            group["_BUCKET"].map(bucket_rank).idxmax()
+        ].copy()
+        worst_row["_TECH"] = "2G+4G"
+        merged_rows.append(worst_row)
+
+    df_merged = pd.DataFrame(merged_rows)
+
+    return pd.concat([df_rest, df_merged], ignore_index=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # EXCEL WRITING
