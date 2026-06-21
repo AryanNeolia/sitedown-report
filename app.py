@@ -26,6 +26,16 @@ st.set_page_config(
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MODE STATE  –  toggle switch, with ?mode= URL param as the initial default
+# ══════════════════════════════════════════════════════════════════════════════
+# A shared link like .../?mode=separate still opens with that mode pre-selected,
+# but colleagues can flip the toggle in the UI without ever touching the URL.
+
+if "combine_2g_4g" not in st.session_state:
+    _mode_param = st.query_params.get("mode", "combined").lower()
+    st.session_state.combine_2g_4g = (_mode_param != "separate")
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CUSTOM CSS  –  clean professional look
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -45,6 +55,73 @@ st.markdown("""
     }
     .header-banner h1 { margin: 0; font-size: 2rem; font-weight: 700; }
     .header-banner p  { margin: 6px 0 0; opacity: 0.85; font-size: 1rem; }
+
+    /* ── Mode toggle card ── */
+    .mode-toggle-card {
+        background: white;
+        border-radius: 12px;
+        padding: 18px 28px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .mode-toggle-label { font-weight: 700; color: #1F3864; font-size: 1rem; }
+    .mode-toggle-desc  { color: #555; font-size: 0.85rem; margin-top: 2px; }
+    .mode-pill {
+        display: inline-block;
+        padding: 4px 14px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        margin-left: 8px;
+    }
+    .mode-pill.combined { background: #f0e6fa; color: #7030A0; }
+    .mode-pill.separate { background: #e3edfb; color: #0070C0; }
+
+    /* ── Toggle switch – darker, high-contrast track/thumb ── */
+    /* .st-key-combine_toggle is generated directly from key="combine_toggle"
+       passed to st.toggle() — this is Streamlit's documented, stable hook.
+       data-testid="stToggle" / role="switch" are kept as extra fallbacks. */
+    .st-key-combine_toggle div[role="switch"],
+    div[data-testid="stToggle"] div[role="switch"] {
+        background-color: #AAB2C0 !important;   /* OFF track — darker grey */
+        border: 1px solid #8A93A3 !important;
+    }
+    .st-key-combine_toggle div[role="switch"][aria-checked="true"],
+    div[data-testid="stToggle"] div[role="switch"][aria-checked="true"] {
+        background-color: #1F3864 !important;   /* ON track — dark navy */
+        border: 1px solid #1F3864 !important;
+    }
+    /* Thumb: the first/only child div inside the switch that slides */
+    .st-key-combine_toggle div[role="switch"] > div,
+    div[data-testid="stToggle"] div[role="switch"] > div {
+        background-color: #FFFFFF !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.55) !important;
+        border: 1px solid #6b7280 !important;
+    }
+    /* Belt-and-suspenders fallback: if internal markup differs from the above,
+       boost contrast on every element inside the switch so it's never washed out */
+    .st-key-combine_toggle *:not(svg),
+    div[data-testid="stToggle"] div[role="switch"] *:not(svg) {
+        filter: contrast(1.4) saturate(1.3);
+    }
+    /* Whole widget gets a subtle contrast lift as an extra safety net */
+    .st-key-combine_toggle,
+    div[data-testid="stToggle"] {
+        filter: contrast(1.15);
+    }
+    /* Toggle's own text label (e.g. "Combine 2G + 4G") */
+    .st-key-combine_toggle label,
+    .st-key-combine_toggle label *,
+    div[data-testid="stToggle"] label,
+    div[data-testid="stToggle"] label * {
+        color: #1F3864 !important;
+        font-weight: 700 !important;
+    }
 
     /* ── Upload card ── */
     .upload-card {
@@ -170,6 +247,41 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MODE TOGGLE  –  switch between Combined (2G+4G) and Separate (2G / 4G)
+# ══════════════════════════════════════════════════════════════════════════════
+
+toggle_col1, toggle_col2 = st.columns([3, 2])
+with toggle_col1:
+    st.markdown("""
+    <div style="padding-top:8px;">
+        <div class="mode-toggle-label">🔀 Site Sheet Mode</div>
+        <div class="mode-toggle-desc">
+            Combine NSS_IDs shared between 2G and 4G into one column,
+            or keep 2G and 4G fully separate.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+with toggle_col2:
+    st.session_state.combine_2g_4g = st.toggle(
+        "Combine 2G + 4G" if st.session_state.combine_2g_4g else "Keep 2G / 4G separate",
+        value=st.session_state.combine_2g_4g,
+        key="combine_toggle",
+        help="ON = merge shared NSS_IDs into a combined 2G+4G column on the Site sheet.\n"
+             "OFF = classic behaviour, 2G and 4G stay fully separate.",
+    )
+    pill_class = "combined" if st.session_state.combine_2g_4g else "separate"
+    pill_text  = "Combined (2G+4G)" if st.session_state.combine_2g_4g else "Separate (2G / 4G)"
+    st.markdown(
+        f'<span class="mode-pill {pill_class}">{pill_text}</span>',
+        unsafe_allow_html=True,
+    )
+
+# Keep the URL in sync so the current toggle state is shareable as a link
+st.query_params["mode"] = "combined" if st.session_state.combine_2g_4g else "separate"
+
+COMBINE_2G_4G = st.session_state.combine_2g_4g
+
+# ══════════════════════════════════════════════════════════════════════════════
 # HOW TO USE  (collapsible)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -217,14 +329,25 @@ uploaded_file = st.file_uploader(
     label_visibility="collapsed",
 )
 
-# Reset state if user uploads a new file
+# Reset state if user uploads a new file OR flips the mode toggle
 if uploaded_file:
     file_id = (uploaded_file.name, uploaded_file.size)
-    if st.session_state.get("_last_file_id") != file_id:
+    file_changed = st.session_state.get("_last_file_id") != file_id
+    mode_changed = st.session_state.get("_last_mode") != COMBINE_2G_4G
+
+    if file_changed or mode_changed:
         st.session_state.result         = None
         st.session_state.output_bytes   = None
         st.session_state.preview_frames = {}
         st.session_state["_last_file_id"] = file_id
+        st.session_state["_last_mode"]    = COMBINE_2G_4G
+
+        if mode_changed and not file_changed:
+            st.info(
+                f"Mode switched to **{pill_text}** — "
+                f"click **Generate Reports** again to refresh the results.",
+                icon="🔄",
+            )
 
 if uploaded_file:
     # Show file info pill
@@ -266,7 +389,9 @@ if uploaded_file:
             time.sleep(0.2)
             progress_bar.progress(50, text="🔄 Building Sector pivot…")
 
-            result, output_bytes = processor.run(file_bytes)
+            result, output_bytes = processor.run(
+                file_bytes, combine_2g_4g=COMBINE_2G_4G
+            )
 
             progress_bar.progress(75, text="🔄 Building Small Cell & No Zone pivots…")
             time.sleep(0.2)
@@ -291,23 +416,57 @@ if uploaded_file:
                 if sheet_name in check_out.sheetnames:
                     ws   = check_out[sheet_name]
                     data = list(ws.values)
-                    if len(data) > 4:   # skip header rows; row 5+ is data
-                        headers = [
-                            str(c) if c is not None else ""
-                            for c in data[3]    # row 4 = column headers
-                        ]
+                    if len(data) > 4:   # need at least header rows + 1 data row
+                        tech_row    = data[1]   # row 2 = tech span headers (2G, 4G, 5G, 2G+4G)
+                        bucket_row  = data[2]   # row 3 = bucket labels (<1Hrs, >1Hrs, ... Total)
+                        region_row  = data[3]   # row 4 = "Region" / "Zone" labels
+
+                        # Build a composite header per column, e.g. "2G <1Hrs", "4G Total"
+                        raw_headers = []
+                        last_tech = ""
+                        for i in range(len(bucket_row)):
+                            tech_val = tech_row[i] if i < len(tech_row) else None
+                            if tech_val:
+                                last_tech = str(tech_val)
+
+                            if i == 0:
+                                raw_headers.append(str(region_row[0] or "Region"))
+                            elif i == 1:
+                                raw_headers.append(str(region_row[1] or "Zone"))
+                            else:
+                                bucket_val = bucket_row[i]
+                                label = str(bucket_val) if bucket_val else ""
+                                raw_headers.append(
+                                    f"{last_tech} {label}".strip() if label else f"col_{i}"
+                                )
+
+                        # Guarantee uniqueness (Streamlit/Arrow rejects duplicate names)
+                        seen: dict[str, int] = {}
+                        headers = []
+                        for h in raw_headers:
+                            if h in seen:
+                                seen[h] += 1
+                                headers.append(f"{h}_{seen[h]}")
+                            else:
+                                seen[h] = 0
+                                headers.append(h)
+
                         rows = [
                             row for row in data[4:]
                             if any(v is not None for v in row)
                         ]
                         if rows:
                             df_prev = pd.DataFrame(rows, columns=headers)
-                            df_prev = df_prev.fillna("")
-
-                           # Give every column a unique name
-                        df_prev.columns = [f"Col_{i}" for i in range(len(df_prev.columns))]
-
-                preview[sheet_name] = df_prev
+                            # Region/Zone stay as text; numeric columns get 0
+                            # instead of "" so dtypes stay consistent for Arrow
+                            for col in df_prev.columns[2:]:
+                                df_prev[col] = pd.to_numeric(
+                                    df_prev[col], errors="coerce"
+                                ).fillna(0)
+                            df_prev[df_prev.columns[:2]] = (
+                                df_prev[df_prev.columns[:2]].fillna("")
+                            )
+                            preview[sheet_name] = df_prev
             check_out.close()
             st.session_state.preview_frames = preview
 
@@ -320,8 +479,8 @@ if uploaded_file:
 # RESULTS  (shown after successful processing)
 # ══════════════════════════════════════════════════════════════════════════════
 
-    if st.session_state.result is not None:
-     result: processor.ProcessResult = st.session_state.result
+if st.session_state.result is not None:
+    result: processor.ProcessResult = st.session_state.result
 
     # ── Success banner ───────────────────────────────────────────────────────
     st.markdown(f"""
