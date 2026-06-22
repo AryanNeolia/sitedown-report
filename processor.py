@@ -238,7 +238,8 @@ def _build_pivot(df: pd.DataFrame,
 
 def _prepare_report_data(all_df: pd.DataFrame,
                          type_filter: list[str] | None,
-                         nozone_only: bool) -> tuple[pd.DataFrame, list[str]]:
+                         nozone_only: bool,
+                         combine_2g_4g: bool = True) -> tuple[pd.DataFrame, list[str]]:
     df = all_df.copy()
     if nozone_only:
         df = df[df["_ZONE"] == "NOZONE"].copy()
@@ -256,8 +257,8 @@ def _prepare_report_data(all_df: pd.DataFrame,
 
     use_nss = (type_filter == ["SITE"])
 
-    # ── Site sheet only: merge NSS_IDs common to 2G & 4G into "2G+4G" ────────
-    if use_nss:
+    # ── Site sheet only, and only when combine_2g_4g is requested ────────────
+    if use_nss and combine_2g_4g:
         df = _merge_common_2g_4g(df)
 
     return _build_pivot(df, use_unique_nss=use_nss)
@@ -439,13 +440,18 @@ def _write_output(ws, combined: pd.DataFrame, techs: list[str],
 # PUBLIC API
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run(file_bytes: bytes) -> tuple[ProcessResult, bytes]:
+def run(file_bytes: bytes, combine_2g_4g: bool = True) -> tuple[ProcessResult, bytes]:
     """
     Full in-memory pipeline:  bytes-in → process → bytes-out.
 
     Parameters
     ----------
-    file_bytes : raw bytes of the uploaded MAG_SITEDOWN.xlsx
+    file_bytes    : raw bytes of the uploaded MAG_SITEDOWN.xlsx
+    combine_2g_4g : if True (default), NSS_IDs common to 2G and 4G on the
+                    Site sheet are merged into a combined "2G+4G" column
+                    using the worse (higher) ageing bucket.
+                    If False, the Site sheet keeps 2G and 4G fully separate
+                    (classic behaviour, no merging).
 
     Returns
     -------
@@ -470,7 +476,10 @@ def run(file_bytes: bytes) -> tuple[ProcessResult, bytes]:
 
     # 4. Build and write each report sheet
     for sheet_name, (type_filter, nozone_only, title) in REPORT_SHEETS.items():
-        combined, techs = _prepare_report_data(all_df, type_filter, nozone_only)
+        combined, techs = _prepare_report_data(
+            all_df, type_filter, nozone_only,
+            combine_2g_4g=combine_2g_4g,
+        )
         ws              = wb.create_sheet(title=sheet_name)
         summary         = SheetSummary(name=sheet_name)
 
